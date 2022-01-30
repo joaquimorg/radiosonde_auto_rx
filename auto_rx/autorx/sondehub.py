@@ -104,6 +104,8 @@ class SondehubUploader(object):
             self.user_position = (lat, lon, alt)
 
     def add(self, telemetry):
+        global width, height, draw, disp, image, font24
+        
         """ Add a dictionary of telemetry to the input queue. 
 
         Args:
@@ -118,6 +120,7 @@ class SondehubUploader(object):
         # Add it to the queue if we are running.
         if self.input_processing_running and _telem:
             self.input_queue.put(_telem)
+
         else:
             self.log_debug("Processing not running, discarding.")
 

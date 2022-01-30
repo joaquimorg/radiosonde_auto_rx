@@ -55,6 +55,51 @@ except ImportError:
     # Python 3
     from queue import Queue
 
+# LCD 
+import digitalio
+import board
+from PIL import Image, ImageDraw, ImageFont
+from adafruit_rgb_display import st7789 
+
+# Configuration for CS and DC pins (these are PiTFT defaults):
+cs_pin = digitalio.DigitalInOut(board.CE0)
+dc_pin = digitalio.DigitalInOut(board.D25)
+reset_pin = digitalio.DigitalInOut(board.D24)
+
+# Config for display baudrate (default max is 24mhz):
+BAUDRATE = 24000000
+
+# Setup SPI bus using hardware SPI:
+spi = board.SPI()
+
+disp = st7789.ST7789(spi, height=240, y_offset=80, rotation=180,
+    cs=cs_pin,
+    dc=dc_pin,
+    rst=reset_pin,
+    baudrate=BAUDRATE,
+)
+
+# Create blank image for drawing.
+# Make sure to create image with mode 'RGB' for full color.
+if disp.rotation % 180 == 90:
+    height = disp.width  # we swap height/width to rotate it to landscape!
+    width = disp.height
+else:
+    width = disp.width  # we swap height/width to rotate it to landscape!
+    height = disp.height
+
+image = Image.new("RGB", (width, height))
+
+# Get drawing object to draw on image.
+draw = ImageDraw.Draw(image)
+
+# Draw a black filled box to clear the image.
+draw.rectangle((0, 0, width, height), outline=0, fill=(0, 0, 0))
+disp.image(image)
+
+font24 = ImageFont.truetype("DejaVuSans.ttf", 24)
+font18 = ImageFont.truetype("DejaVuSans.ttf", 18)
+##
 
 # Logging level
 # INFO = Basic status messages
@@ -126,6 +171,7 @@ def allocate_sdr(check_only=False, task_description=""):
 def start_scanner():
     """Start a scanner thread on the first available SDR"""
     global config, RS_PATH, temporary_block_list
+    global width, height, draw, disp, image, font24
 
     if "SCAN" in autorx.task_list:
         # Already a scanner running! Return.
@@ -134,12 +180,25 @@ def start_scanner():
         )
         return
 
+
     # Attempt to allocate a SDR.
     _device_idx = allocate_sdr(task_description="Scanner")
     if _device_idx is None:
         logging.debug("Task Manager - No SDRs free to run Scanner.")
         return
     else:
+
+        # LCD
+        draw.rectangle((0, 0, width, height), outline=0, fill=(0, 0, 0))
+        text = "scanning..."
+        font_width = font24.getsize(text)[0]
+        draw.text((width // 2 - font_width // 2, 40),
+            text, font=font24, fill=(0, 0, 255), )
+
+        # Display image.
+        disp.image(image)
+        #
+
         # Create entry in task list.
         autorx.task_list["SCAN"] = {"device_idx": _device_idx, "task": None}
 
@@ -182,12 +241,25 @@ def start_scanner():
 
 def stop_scanner():
     """Stop a currently running scan thread, and release the SDR it was using."""
+    global width, height, draw, disp, image, font24
 
     if "SCAN" not in autorx.task_list:
         # No scanner thread running!
         # This means we likely have a SDR free already.
         return
     else:
+
+        # LCD
+        draw.rectangle((0, 0, width, height), outline=0, fill=(0, 0, 0))
+        text = "stop scanning..."
+        font_width = font24.getsize(text)[0]
+        draw.text((width // 2 - font_width // 2, 40),
+            text, font=font24, fill=(0, 0, 255), )
+
+        # Display image.
+        disp.image(image)
+        #
+
         logging.info("Halting Scanner to decode detected radiosonde.")
         _scan_sdr = autorx.task_list["SCAN"]["device_idx"]
         # Stop the scanner.
@@ -208,6 +280,7 @@ def start_decoder(freq, sonde_type):
 
     """
     global config, RS_PATH, exporter_functions, rs92_ephemeris, temporary_block_list
+    global width, height, draw, disp, image, font18
 
     # Allocate a SDR.
     _device_idx = allocate_sdr(
@@ -218,6 +291,18 @@ def start_decoder(freq, sonde_type):
         logging.error("Could not allocate SDR for decoder!")
         return
     else:
+
+        # LCD
+        draw.rectangle((0, 0, width, height), outline=0, fill=(0, 0, 0))        
+        text = "Decoder (%s, %.3f MHz)" % (sonde_type, freq / 1e6)
+        font_width = font18.getsize(text)[0]
+        draw.text((width // 2 - font_width // 2, 40),
+            text, font=font18, fill=(0, 0, 255), )
+
+        # Display image.
+        disp.image(image)
+        #
+
         # Add an entry to the task list
         autorx.task_list[freq] = {"device_idx": _device_idx, "task": None}
 
@@ -447,6 +532,7 @@ def clean_task_list():
 def stop_all():
     """Shut-down all decoders, scanners, and exporters."""
     global exporter_objects
+    global width, height, draw, disp, image, font24
     logging.info("Starting shutdown of all threads.")
     for _task in autorx.task_list.keys():
         try:
@@ -462,6 +548,22 @@ def stop_all():
 
     if gpsd_adaptor != None:
         gpsd_adaptor.close()
+
+    # LCD
+    draw.rectangle((0, 0, width, height), outline=0, fill=(0, 0, 0))
+    text = "Radiosonde"
+    font_width = font24.getsize(text)[0]
+    draw.text((width // 2 - font_width // 2, 20),
+        text, font=font24, fill=(255, 255, 255), )
+
+    text = "stopped..."
+    font_width = font24.getsize(text)[0]
+    draw.text((width // 2 - font_width // 2, 40),
+        text, font=font24, fill=(255, 0, 0), )
+
+    # Display image.
+    disp.image(image)
+    #
 
 
 def telemetry_filter(telemetry):
@@ -649,6 +751,24 @@ def email_error(message="foo"):
 def main():
     """Main Loop"""
     global config, exporter_objects, exporter_functions, logging_level, rs92_ephemeris, gpsd_adaptor, email_exporter
+    global width, height, draw, disp, image, font24
+
+    # LCD Welcome
+    logo = Image.open("../autorx_lcd.png")
+    image_ratio = logo.width / logo.height
+    screen_ratio = width / height
+    scaled_width = width
+    scaled_height = logo.height * width // logo.width
+    logo = logo.resize((scaled_width, scaled_height), Image.BICUBIC)
+
+    # Crop and center the logo
+    x = scaled_width // 2 - width // 2
+    y = scaled_height // 2 - height // 2
+    logo = logo.crop((x, y, x + width, y + height))
+
+    # Display logo.
+    disp.image(logo)
+    #
 
     # Command line arguments.
     parser = argparse.ArgumentParser()
@@ -976,10 +1096,15 @@ def main():
     # Note the start time.
     _start_time = time.time()
 
+    # LCD
+    draw.rectangle((0, 0, width, height), outline=0, fill=(0, 0, 0))
+    disp.image(image)
+    #
+
     # If we have been asked to start decoding a specific radiosonde type, we need to start up
     # the decoder immediately, before a scanner thread is started.
     if args.type != None:
-        handle_scan_results()
+        handle_scan_results()    
 
     # Loop.
     while True:
