@@ -294,7 +294,7 @@ def start_decoder(freq, sonde_type):
 
         # LCD
         draw.rectangle((0, 0, width, height), outline=0, fill=(0, 0, 0))        
-        text = "Decoder (%s, %.3f MHz)" % (sonde_type, freq / 1e6)
+        text = "%s, %.3f MHz" % (sonde_type, freq / 1e6)
         font_width = font18.getsize(text)[0]
         draw.text((width // 2 - font_width // 2, 40),
             text, font=font18, fill=(0, 0, 255), )
@@ -578,6 +578,7 @@ def telemetry_filter(telemetry):
 
     """
     global config
+    global width, height, draw, disp, image, font18
 
     # First Check: zero lat/lon
     if (telemetry["lat"] == 0.0) and (telemetry["lon"] == 0.0):
@@ -701,6 +702,16 @@ def telemetry_filter(telemetry):
         or ("LMS" in telemetry["type"])
         or ("IMET" in telemetry["type"])
     ):
+
+        # LCD
+        draw.rectangle((0, 0, width, height), outline=0, fill=(0, 0, 0))        
+        text = "%s\n\nLAT : %s\nLOG : %s\nALT : %s\n\n%s" % (telemetry["id"], telemetry["lat"], telemetry["lon"], telemetry["alt"], telemetry["frame"])
+        draw.text((1, 1), text, font=font18, fill=(255, 255, 255), )
+
+        # Display image.
+        disp.image(image)
+        #
+
         return "OK"
     else:
         _id_msg = "Payload ID %s is invalid." % telemetry["id"]
